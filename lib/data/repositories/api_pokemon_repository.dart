@@ -61,7 +61,8 @@ class ApiPokemonRepository implements PokemonRepository {
     try {
       final response = await client.get(uri);
       if (response.statusCode == 200) {
-        final List<dynamic> pokemonList = json.decode(response.body);
+        final Map<String, dynamic> responseData = json.decode(response.body);
+        final List<dynamic> pokemonList = responseData['pokemons'];
         return pokemonList.map((json) => Pokemon.fromJson(json)).toList();
       } else {
         throw Exception(
