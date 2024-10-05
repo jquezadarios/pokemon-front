@@ -24,8 +24,11 @@ class PokemonListPageState extends State<PokemonListPage> {
     super.initState();
     _controller = PokemonController(
         repository: ApiPokemonRepository(client: http.Client()));
-    _controller.fetchPokemons();
-    _controller.fetchCapturedPokemons();
+
+    Future.microtask(() {
+      _controller.fetchPokemons();
+      _controller.fetchCapturedPokemons();
+    });
   }
 
   @override
@@ -47,7 +50,7 @@ class PokemonListPageState extends State<PokemonListPage> {
             onSearch: _performSearch,
             onTypeChanged: (value) {
               setState(() {
-                _selectedType = value!;
+                _selectedType = value ?? '';
                 _performSearch();
               });
             },
@@ -119,9 +122,10 @@ class PokemonListPageState extends State<PokemonListPage> {
 
   void _performSearch() {
     _controller.fetchPokemons(
-        name: _searchController.text,
-        type: _selectedType.isNotEmpty ? _selectedType : null,
-        page: 1);
+      name: _searchController.text,
+      type: _selectedType.isNotEmpty ? _selectedType : null,
+      page: 1,
+    );
   }
 
   @override

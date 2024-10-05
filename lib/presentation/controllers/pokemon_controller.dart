@@ -62,15 +62,15 @@ class PokemonController extends ChangeNotifier {
     _state = _state.copyWith(
       isLoading: true,
       error: '',
-      searchName: name ?? _state.searchName,
-      searchType: type ?? _state.searchType,
+      searchName: name,
+      searchType: type,
     );
     notifyListeners();
     try {
       final response = await repository.fetchPokemons(
         page: page ?? _state.currentPage ?? 1,
-        name: _state.searchName,
-        type: _state.searchType,
+        name: name,
+        type: type,
       );
       _state = _state.copyWith(
         allPokemons: response['pokemons'],

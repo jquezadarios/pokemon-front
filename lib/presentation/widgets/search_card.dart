@@ -51,7 +51,7 @@ class SearchCard extends StatelessWidget {
                 filled: true,
                 fillColor: Colors.grey[200],
               ),
-              value: selectedType,
+              value: selectedType.isEmpty ? '' : selectedType,
               hint: const Text('Select Type'),
               isExpanded: true,
               items: ['', ...pokemonTypes]
@@ -60,7 +60,9 @@ class SearchCard extends StatelessWidget {
                         child: Text(type.isEmpty ? 'All types' : type),
                       ))
                   .toList(),
-              onChanged: onTypeChanged,
+              onChanged: (value) {
+                onTypeChanged(value!.isEmpty ? null : value);
+              },
             ),
           ],
         ),
