@@ -62,7 +62,7 @@ class Pokemon {
 }
 
 abstract class PokemonRepository {
-  Future<List<Pokemon>> fetchPokemons(
+  Future<Map<String, dynamic>> fetchPokemons(
       {required int page, String? name, String? type});
   Future<void> capturePokemon(int pokemonId);
   Future<List<Pokemon>> fetchCapturedPokemons();
@@ -75,7 +75,7 @@ class ApiPokemonRepository implements PokemonRepository {
   ApiPokemonRepository({required this.client});
 
   @override
-  Future<List<Pokemon>> fetchPokemons(
+  Future<Map<String, dynamic>> fetchPokemons(
       {required int page, String? name, String? type}) async {
     final queryParams = {
       'page': page.toString(),
@@ -91,8 +91,14 @@ class ApiPokemonRepository implements PokemonRepository {
       final response = await client.get(uri);
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = json.decode(response.body);
-        final List<dynamic> pokemonList = responseData['pokemons'];
-        return pokemonList.map((json) => Pokemon.fromJson(json)).toList();
+        return {
+          'pokemons': (responseData['pokemons'] as List)
+              .map((json) => Pokemon.fromJson(json))
+              .toList(),
+          'page': responseData['page'] as int?,
+          'total_pages': responseData['total_pages'] as int?,
+          'total_count': responseData['total_count'] as int?,
+        };
       } else {
         throw Exception('Failed to load pokemons: ${response.statusCode}');
       }
@@ -150,12 +156,22 @@ class PokemonState {
   final List<Pokemon> capturedPokemons;
   final bool isLoading;
   final String error;
+  final int? currentPage;
+  final int? totalPages;
+  final int? totalCount;
+  final String? searchName;
+  final String? searchType;
 
   const PokemonState({
     this.allPokemons = const [],
     this.capturedPokemons = const [],
     this.isLoading = false,
     this.error = '',
+    this.currentPage,
+    this.totalPages,
+    this.totalCount,
+    this.searchName,
+    this.searchType,
   });
 
   PokemonState copyWith({
@@ -163,12 +179,22 @@ class PokemonState {
     List<Pokemon>? capturedPokemons,
     bool? isLoading,
     String? error,
+    int? currentPage,
+    int? totalPages,
+    int? totalCount,
+    String? searchName,
+    String? searchType,
   }) {
     return PokemonState(
       allPokemons: allPokemons ?? this.allPokemons,
       capturedPokemons: capturedPokemons ?? this.capturedPokemons,
       isLoading: isLoading ?? this.isLoading,
       error: error ?? this.error,
+      currentPage: currentPage ?? this.currentPage,
+      totalPages: totalPages ?? this.totalPages,
+      totalCount: totalCount ?? this.totalCount,
+      searchName: searchName ?? this.searchName,
+      searchType: searchType ?? this.searchType,
     );
   }
 }
@@ -176,30 +202,38 @@ class PokemonState {
 class PokemonController extends ChangeNotifier {
   final PokemonRepository repository;
   PokemonState _state = const PokemonState();
-  int _currentPage = 1;
 
   PokemonController({required this.repository});
 
   PokemonState get state => _state;
 
-  Future<void> fetchPokemons({String? name, String? type}) async {
-    _state = _state.copyWith(isLoading: true, error: '');
+  Future<void> fetchPokemons({String? name, String? type, int? page}) async {
+    _state = _state.copyWith(
+      isLoading: true,
+      error: '',
+      searchName: name ?? _state.searchName,
+      searchType: type ?? _state.searchType,
+    );
     notifyListeners();
     try {
-      final pokemons = await repository.fetchPokemons(
-          page: _currentPage, name: name, type: type);
-      if (_currentPage == 1) {
-        _state = _state.copyWith(allPokemons: pokemons, isLoading: false);
-      } else {
-        _state = _state.copyWith(
-            allPokemons: [..._state.allPokemons, ...pokemons],
-            isLoading: false);
-      }
+      final response = await repository.fetchPokemons(
+        page: page ?? _state.currentPage ?? 1,
+        name: _state.searchName,
+        type: _state.searchType,
+      );
+      _state = _state.copyWith(
+        allPokemons: response['pokemons'],
+        currentPage: response['page'] ?? _state.currentPage,
+        totalPages: response['total_pages'] ?? _state.totalPages,
+        totalCount: response['total_count'] ?? _state.totalCount,
+        isLoading: false,
+      );
     } catch (e) {
       _state = _state.copyWith(
-          error:
-              'Failed to load Pokémon. Please check your internet connection and try again.',
-          isLoading: false);
+        error:
+            'Failed to load Pokémon. Please check your internet connection and try again.',
+        isLoading: false,
+      );
     }
     notifyListeners();
   }
@@ -213,7 +247,6 @@ class PokemonController extends ChangeNotifier {
         _state = _state.copyWith(capturedPokemons: updatedCaptured);
       } else {
         if (_state.capturedPokemons.length >= 6) {
-          // Remover el Pokémon más antiguo
           final updatedCaptured = List<Pokemon>.from(_state.capturedPokemons);
           updatedCaptured.removeAt(0);
           updatedCaptured.add(pokemon);
@@ -244,15 +277,23 @@ class PokemonController extends ChangeNotifier {
     }
   }
 
-  void loadMore() {
-    _currentPage++;
-    fetchPokemons();
+  void nextPage() {
+    if (_state.currentPage != null &&
+        _state.totalPages != null &&
+        _state.currentPage! < _state.totalPages!) {
+      fetchPokemons(page: _state.currentPage! + 1);
+    }
+  }
+
+  void previousPage() {
+    if (_state.currentPage != null && _state.currentPage! > 1) {
+      fetchPokemons(page: _state.currentPage! - 1);
+    }
   }
 
   void resetSearch() {
-    _currentPage = 1;
-    _state = _state.copyWith(allPokemons: []);
-    notifyListeners();
+    _state = _state.copyWith(searchName: null, searchType: null);
+    fetchPokemons(page: 1);
   }
 }
 
@@ -383,34 +424,27 @@ class PokemonListPageState extends State<PokemonListPage> {
             ),
           );
         }
-        return GridView.builder(
-          padding: const EdgeInsets.all(16),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            childAspectRatio: 0.75,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-          ),
-          itemCount: state.allPokemons.length + 1,
-          itemBuilder: (context, index) {
-            if (index == state.allPokemons.length) {
-              return state.isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : Center(
-                      child: ElevatedButton(
-                        onPressed: _controller.loadMore,
-                        style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red,
-                            foregroundColor: Colors.white),
-                        child: const Text('Load More'),
-                      ),
-                    );
-            }
-
-            final pokemon = state.allPokemons[index];
-            final isCaptured = state.capturedPokemons.contains(pokemon);
-            return _buildPokemonCard(pokemon, isCaptured);
-          },
+        return Column(
+          children: [
+            Expanded(
+              child: GridView.builder(
+                padding: const EdgeInsets.all(16),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  childAspectRatio: 0.75,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                ),
+                itemCount: state.allPokemons.length,
+                itemBuilder: (context, index) {
+                  final pokemon = state.allPokemons[index];
+                  final isCaptured = state.capturedPokemons.contains(pokemon);
+                  return _buildPokemonCard(pokemon, isCaptured);
+                },
+              ),
+            ),
+            _buildPaginationControls(),
+          ],
         );
       },
     );
@@ -443,6 +477,39 @@ class PokemonListPageState extends State<PokemonListPage> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildPaginationControls() {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final state = _controller.state;
+        return Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              ElevatedButton(
+                onPressed: state.currentPage != null && state.currentPage! > 1
+                    ? _controller.previousPage
+                    : null,
+                child: const Text('Previous'),
+              ),
+              Text(
+                  'Page ${state.currentPage ?? 1} of ${state.totalPages ?? 1}'),
+              ElevatedButton(
+                onPressed: state.currentPage != null &&
+                        state.totalPages != null &&
+                        state.currentPage! < state.totalPages!
+                    ? _controller.nextPage
+                    : null,
+                child: const Text('Next'),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -498,9 +565,10 @@ class PokemonListPageState extends State<PokemonListPage> {
   }
 
   void _performSearch() {
-    _controller.resetSearch();
     _controller.fetchPokemons(
-        name: _searchController.text, type: _selectedType);
+        name: _searchController.text,
+        type: _selectedType.isNotEmpty ? _selectedType : null,
+        page: 1);
   }
 
   @override
