@@ -26,8 +26,7 @@ class PokemonListPageState extends State<PokemonListPage> {
         repository: ApiPokemonRepository(client: http.Client()));
 
     Future.microtask(() {
-      _controller.fetchPokemons();
-      _controller.fetchCapturedPokemons();
+      _controller.initializeData();
     });
   }
 
@@ -80,7 +79,7 @@ class PokemonListPageState extends State<PokemonListPage> {
                     style: const TextStyle(color: Colors.red)),
                 const SizedBox(height: 16),
                 ElevatedButton(
-                  onPressed: () => _controller.fetchPokemons(),
+                  onPressed: () => _controller.initializeData(),
                   style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red,
                       foregroundColor: Colors.white),

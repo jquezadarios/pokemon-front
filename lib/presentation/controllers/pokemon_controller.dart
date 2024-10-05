@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'dart:async';
 import '../../domain/entities/pokemon.dart';
 import '../../domain/repositories/pokemon_repository.dart';
 
@@ -53,6 +54,8 @@ class PokemonState {
 class PokemonController extends ChangeNotifier {
   final PokemonRepository repository;
   PokemonState _state = const PokemonState();
+  int _retryCount = 0;
+  static const int _maxRetries = 3;
 
   PokemonController({required this.repository});
 
@@ -79,7 +82,13 @@ class PokemonController extends ChangeNotifier {
         totalCount: response['total_count'] ?? _state.totalCount,
         isLoading: false,
       );
+      _retryCount = 0;
     } catch (e) {
+      if (_retryCount < _maxRetries) {
+        _retryCount++;
+        await Future.delayed(Duration(seconds: 2 * _retryCount));
+        return fetchPokemons(name: name, type: type, page: page);
+      }
       _state = _state.copyWith(
         error:
             'Failed to load Pokémon. Please check your internet connection and try again.',
@@ -121,11 +130,16 @@ class PokemonController extends ChangeNotifier {
     try {
       final capturedPokemons = await repository.fetchCapturedPokemons();
       _state = _state.copyWith(capturedPokemons: capturedPokemons);
-      notifyListeners();
+      _retryCount = 0;
     } catch (e) {
+      if (_retryCount < _maxRetries) {
+        _retryCount++;
+        await Future.delayed(Duration(seconds: 2 * _retryCount));
+        return fetchCapturedPokemons();
+      }
       _state = _state.copyWith(error: 'Failed to fetch captured Pokémon');
-      notifyListeners();
     }
+    notifyListeners();
   }
 
   void nextPage() {
@@ -145,5 +159,11 @@ class PokemonController extends ChangeNotifier {
   void resetSearch() {
     _state = _state.copyWith(searchName: null, searchType: null);
     fetchPokemons(page: 1);
+  }
+
+  Future<void> initializeData() async {
+    _retryCount = 0;
+    await fetchPokemons();
+    await fetchCapturedPokemons();
   }
 }
